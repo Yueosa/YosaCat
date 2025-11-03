@@ -1,3 +1,5 @@
+# 流程库 command
+# 调用关系 handler -> command --- function
 # 用于定义指令
     # 例如 /ping <msg>
 
