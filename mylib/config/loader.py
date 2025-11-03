@@ -23,6 +23,12 @@ class ConfigLoader:
         ./mylib/config/config.toml
     """
 
+    def __getattribute__(self, name):
+        """防止在未初始化时访问属性"""
+        if name in ['fastapi', 'napcat', 'url', 'header'] and not hasattr(self,'_source_map'):
+            raise RuntimeError(f"配置未正确初始化，无法访问属性: {name}")
+        return super().__getattribute__(name)
+
     # ------------------- 全局单例模式喵~ -------------------
     _global_instance: Optional["ConfigLoader"] = None
 
