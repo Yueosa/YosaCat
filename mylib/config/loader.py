@@ -4,7 +4,7 @@ import json
 import tomllib
 import inspect
 from dotenv import load_dotenv
-from typing import Dict, Literal, Optional
+from typing import List, Dict, Literal, Optional, Any
 
 from mylib.etp import ConfigError, EnvError
 from mylib.utils import Printer
@@ -15,25 +15,35 @@ class ConfigLoader:
     ConfigLoader 配置加载器 (支持全局单例模式) 
 
     支持：
-    - TOML 配置 (推荐) 
-    - JSON 兼容模式
+    - TOML 配置 (推荐) (兼容JSON)
     - .env 环境变量文件
+    - config 自动发现模式
 
     默认加载路径：
         ./mylib/config/config.toml
     """
 
-    def __getattribute__(self, name):
-        """防止在未初始化时访问属性"""
-        if name in ['fastapi', 'napcat', 'url', 'header'] and not hasattr(self,'_source_map'):
-            raise RuntimeError(f"配置未正确初始化，无法访问属性: {name}")
-        return super().__getattribute__(name)
+    CONFIG = [
+        "fastapi_server_host",
+        "fastapi_server_port",
+        "napcat_server_host",
+        "napcat_server_port",
+        "napcat_server_token"
+    ]
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """记录属性设置来源"""
+        super().__setattr__(name, value)
+        if not name.startswith('_') and name not in self._source_map:
+            caller_frame = inspect.stack()[1]
+            caller_func = caller_frame.function
+            self._record_source(name, f"auto_discovery -> {caller_func}")
 
     # ------------------- 全局单例模式喵~ -------------------
     _global_instance: Optional["ConfigLoader"] = None
 
     @classmethod
-    def init_global(cls, mode: Literal["env", "config", "all"] = "config",
+    def init_global(cls, mode: Literal["env", "config", "all", "config_discovery"] = "config_discovery",
                     config_path: Optional[str] = None) -> "ConfigLoader":
         """初始化全局实例"""
         if cls._global_instance is None:
@@ -49,9 +59,10 @@ class ConfigLoader:
 
     # ------------------- 实例化吧! -------------------
     def __init__(self,
-                mode: Literal["env", "config", "all"] = "config",
+                mode: Literal["env", "config", "all", "config_discovery"] = "config_discovery",
                 config_path: Optional[str] = None):
         self._source_map: Dict[str, str] = {}
+        self._discovered_attrs: List[str] = []
         self.printer = Printer()
 
         if config_path is None:
@@ -74,6 +85,26 @@ class ConfigLoader:
 
         getattr(self, f"_load_{mode}")()
 
+        self._validate_required_configs()
+
+    # ------------------- 验证运行必备字段喵 -------------------
+    def _validate_required_configs(self) -> None:
+        """验证必须配置项"""
+        missing_configs = []
+        for config_name in self.CONFIG:
+            if not hasattr(self, config_name):
+                missing_configs.append(config_name)
+        
+        if missing_configs:
+            raise ConfigError(f"缺少必须配置项: {missing_configs}")
+
+    def _register_attribute(self, name: str, value: Any, source: str) -> None:
+        """注册实例属性"""
+        setattr(self, name, value)
+        self._record_source(name, source)
+        if source.startswith("discovery"):
+            self._discovered_attrs.append(name)
+
     # ------------------- 你只是个工具罢了... -------------------
     def _record_source(self, name: str, source: str) -> None:
         """记录属性来源"""
@@ -86,30 +117,52 @@ class ConfigLoader:
             raise ConfigError(f"配置文件不存在: {self.config_path}")
 
         if self.config_path.endswith(".toml"):
-            try:
-                with open(self.config_path, "rb") as f:
-                    toml_data = tomllib.load(f)
-                    self.toml_data = toml_data
-                    self._record_source("toml_data", "_load_config")
-
-                    self.fastapi = toml_data.get("FastAPI_Server", {})
-                    self._record_source("fastapi", "_load_config -> FastAPI_Server")
-
-                    self.napcat = toml_data.get("Napcat_Server", {})
-                    self._record_source("napcat", "_load_config -> Napcat_Server")
-
-            except Exception as e:
-                raise ConfigError(f"TOML 配置解析失败: {e}")
+            self._load_toml_config()
         elif self.config_path.endswith(".json"):
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    json_data = json.load(f)
-                    self.json_data = json_data
-                    self._record_source("json_data", "_load_config -> JSON")
-            except Exception as e:
-                raise ConfigError(f"JSON 配置解析失败: {e}")
+            self._load_json_config()
         else:
             raise ConfigError(f"未知的配置文件类型: {self.config_path}")
+
+    def _load_toml_config(self) -> None:
+        """加载 TOML 配置"""
+        try:
+            with open(self.config_path, "rb") as f:
+                toml_data = tomllib.load(f)
+                self.toml_data = toml_data
+                self._record_source("toml_data", "_load_config")
+
+                # 加载已知配置节
+                fastapi_server_data = toml_data.get("FastAPI_Server", {})
+                self.fastapi_server_host = fastapi_server_data.get("fastapi_server_host", None)
+                self.fastapi_server_port = fastapi_server_data.get("fastapi_server_port", None)
+
+                napcat_server_data = toml_data.get("Napcat_Server", {})
+                self.fastapi_server_host = napcat_server_data.get("napcat_server_host", None)
+                self.fastapi_server_host = napcat_server_data.get("napcat_server_port", None)
+                self.fastapi_server_host = napcat_server_data.get("napcat_server_token", None)
+
+        except Exception as e:
+            raise ConfigError(f"TOML 配置解析失败: {e}")
+
+    def _load_json_config(self) -> None:
+        pass
+
+    # ------------------- 配置加载器 (自动发现模式) -------------------
+    def _load_config_discovery(self) -> None:
+        self._load_config()
+        self._load_discovery()
+        self._record_source("discovery", "__inti__ -> _load_discovery (config + auto_discovery)")
+
+
+    def _load_discovery(self) -> None:
+        self._discover_from_toml()
+        self._discover_from_json()
+
+    def _discover_from_toml(self) -> None:
+        pass
+
+    def _discover_from_json(self) -> None:
+        pass
 
     # ------------------- 环境变量加载器 -------------------
     def _load_env(self) -> None:
