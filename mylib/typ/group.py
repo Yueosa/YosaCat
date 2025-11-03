@@ -1,0 +1,1 @@
+# 群聊信息结构（GroupInfo, GroupMessage 等）
