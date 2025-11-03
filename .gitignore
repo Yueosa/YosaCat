@@ -1,12 +1,12 @@
 # 虚拟环境
 .venv
 
+# 配置文件
+config.toml
+
 # 环境变量
 .env
 !.env.example
 
 # 缓存
 __pycache__
-
-# 测试文件
-test
