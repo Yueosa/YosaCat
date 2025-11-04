@@ -1,8 +1,8 @@
 [FastAPI_Server]
-host = "0.0.0.0"
-port = 8080
+fastapi_server_host = "0.0.0.0"
+fastapi_server_port = 8080
 
 [Napcat_Server]
-host = "0.0.0.0"
-port = 3000
-token = ""
+napcat_server_host = "0.0.0.0"
+napcat_server_port = 3000
+napcat_server_token = ""
