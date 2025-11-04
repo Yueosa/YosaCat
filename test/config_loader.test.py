@@ -19,7 +19,8 @@ def test_config():
 def test_env():
     print("\n\n=== 测试 2: 同时加载 config + env ===")
     try:
-        cfg = ConfigLoader(mode="env")
+        cfg = ConfigLoader(mode="config")
+        cfg._load_env()
         cfg.show_config()
         print("✅ 测试 2 成功\n")
     except Exception as e:
